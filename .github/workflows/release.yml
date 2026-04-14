@@ -1,0 +1,225 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      haproxy_version:
+        description: 'HAProxy version to build (e.g. 3.2.3)'
+        required: true
+
+jobs:
+  build:
+    name: Build wheel (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Pin the same PyPA manylinux2014 tag that Ray uses
+          # (see ray repo: ci/docker/manylinux.Dockerfile).
+          - arch: x86_64
+            runner: ubuntu-22.04
+            plat_name: manylinux_2_17_x86_64
+            container: quay.io/pypa/manylinux2014_x86_64:2026.01.02-1
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+            plat_name: manylinux_2_17_aarch64
+            container: quay.io/pypa/manylinux2014_aarch64:2026.01.02-1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine HAProxy version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "haproxy_version=${{ github.event.inputs.haproxy_version }}" >> "$GITHUB_OUTPUT"
+          else
+            # Strip leading 'v' from tag (v3.2.3 → 3.2.3)
+            echo "haproxy_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build HAProxy tarball inside manylinux2014
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" \
+            -e HAPROXY_VERSION=${{ steps.version.outputs.haproxy_version }} \
+            -e OUTPUT_DIR=/work/dist \
+            ${{ matrix.container }} \
+            /work/ci/build/build-haproxy-dist.sh
+
+      - name: Extract tarball into ray_haproxy/bin/
+        run: |
+          tar -xzf dist/haproxy-linux-${{ matrix.arch }}.tar.gz -C ray_haproxy/bin/
+
+      - name: Scan vendored libs for CVEs
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype dir:ray_haproxy/bin/ --fail-on high
+
+      - name: Update package version from tag
+        run: |
+          VERSION=${{ steps.version.outputs.haproxy_version }}
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" pyproject.toml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build wheel
+        run: |
+          pip install wheel setuptools
+          python setup.py bdist_wheel --plat-name ${{ matrix.plat_name }}
+          ls -la dist/*.whl
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.arch }}
+          path: dist/*.whl
+
+      - name: Upload tarball for verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.arch }}
+          path: |
+            ray_haproxy/bin/haproxy
+            ray_haproxy/bin/lib/
+            ci/verify-vendoring.sh
+
+  verify:
+    name: Verify vendoring (${{ matrix.arch }}/${{ matrix.distro }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false  # run all combos even if one fails
+      matrix:
+        arch: [x86_64, aarch64]
+        distro:
+          - ubuntu:20.04
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:bookworm-slim
+          - rockylinux:9
+          - amazonlinux:2023
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+        exclude: []
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarball-${{ matrix.arch }}
+          path: artifacts/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{ matrix.arch }}
+          path: wheel/
+
+      - name: Determine setup command
+        id: setup
+        run: |
+          case "${{ matrix.distro }}" in
+            ubuntu:*|debian:*)
+              echo "cmd=apt-get update -qq && apt-get install -y -qq binutils file > /dev/null 2>&1" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "cmd=yum install -y -q binutils file > /dev/null 2>&1" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Verify on ${{ matrix.distro }}
+        run: |
+          chmod +x artifacts/ray_haproxy/bin/haproxy
+          chmod +x artifacts/ray_haproxy/bin/lib/*.so* 2>/dev/null || true
+          chmod +x artifacts/ci/verify-vendoring.sh
+          docker run --rm \
+            -v "$PWD/artifacts:/work" \
+            -v "$PWD/wheel:/wheel" \
+            ${{ matrix.distro }} \
+            bash -c "
+              ${{ steps.setup.outputs.cmd }}
+
+              # 1. Vendoring checks (RPATH, ldd, hardening)
+              /work/ci/verify-vendoring.sh /work/ray_haproxy/bin/haproxy /work/ray_haproxy/bin/lib
+
+              # 2. Install wheel and test the Python API
+              python3 -m pip install /wheel/*.whl 2>/dev/null \
+                || python3 -m ensurepip --default-pip > /dev/null 2>&1 && python3 -m pip install /wheel/*.whl 2>/dev/null \
+                || { echo 'SKIP: pip not available in this image'; exit 0; }
+
+              python3 -c '
+              from ray_haproxy import get_haproxy_binary
+              import subprocess, os
+              binary = get_haproxy_binary()
+              assert os.path.isfile(binary), f\"not a file: {binary}\"
+              assert os.access(binary, os.X_OK), f\"not executable: {binary}\"
+              r = subprocess.run([binary, \"-v\"], capture_output=True, text=True)
+              assert r.returncode == 0, f\"haproxy -v exit {r.returncode}: {r.stderr}\"
+              assert \"HAProxy version\" in r.stdout, f\"unexpected output: {r.stdout}\"
+              print(f\"OK: {r.stdout.splitlines()[0]}\")
+              '
+            "
+
+  smoke-test:
+    name: Smoke-test wheel (${{ matrix.arch }}/Python ${{ matrix.python-version }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+        exclude: []
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{ matrix.arch }}
+          path: dist/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install and test
+        run: |
+          pip install dist/*.whl
+          python -c "
+          from ray_haproxy import get_haproxy_binary
+          import subprocess, sys
+          binary = get_haproxy_binary()
+          print(f'Python {sys.version}')
+          print(f'Binary: {binary}')
+          result = subprocess.run([binary, '-v'], capture_output=True, text=True)
+          print(result.stdout or result.stderr)
+          assert result.returncode == 0, f'haproxy -v failed: {result.returncode}'
+          print('OK')
+          "
+
+  publish:
+    name: Publish to PyPI
+    needs: [build, verify, smoke-test]
+    runs-on: ubuntu-22.04
+    environment: pypi
+    permissions:
+      id-token: write  # for PyPI trusted publishing
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

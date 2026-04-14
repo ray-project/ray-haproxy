@@ -1,0 +1,95 @@
+name: Check HAProxy upstream version
+
+on:
+  schedule:
+    - cron: '0 10 * * *'  # Daily at 10:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Check for new HAProxy 2.8.x release
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get current pinned version
+        id: current
+        run: |
+          version=$(grep 'HAPROXY_VERSION=' ci/build/build-haproxy-dist.sh \
+            | head -1 \
+            | sed 's/.*:-\([0-9.]*\)}.*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Current pinned version: $version"
+
+      - name: Get latest 2.8.x tag from haproxy/haproxy
+        id: latest
+        run: |
+          # Fetch all tags matching v2.8.* and pick the highest semver.
+          latest=$(gh api repos/haproxy/haproxy/tags --paginate \
+            --jq '.[].name' \
+            | grep -E '^v2\.8\.[0-9]+$' \
+            | sort -V \
+            | tail -1 \
+            | sed 's/^v//')
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream 2.8.x: $latest"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare versions
+        id: compare
+        run: |
+          current="${{ steps.current.outputs.version }}"
+          latest="${{ steps.latest.outputs.version }}"
+          if [ "$current" != "$latest" ]; then
+            echo "needs_bump=true" >> "$GITHUB_OUTPUT"
+            echo "Bump needed: $current → $latest"
+          else
+            echo "needs_bump=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date: $current"
+          fi
+
+      - name: Open bump PR
+        if: steps.compare.outputs.needs_bump == 'true'
+        run: |
+          current="${{ steps.current.outputs.version }}"
+          latest="${{ steps.latest.outputs.version }}"
+          branch="bump-haproxy-${latest}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+
+          # Update HAPROXY_VERSION default in build script.
+          sed -i "s/HAPROXY_VERSION:-${current}/HAPROXY_VERSION:-${latest}/" \
+            ci/build/build-haproxy-dist.sh
+
+          # Update version in pyproject.toml.
+          sed -i "s/^version = \"${current}\"/version = \"${latest}\"/" pyproject.toml
+
+          git add ci/build/build-haproxy-dist.sh pyproject.toml
+          git commit -m "Bump HAProxy ${current} → ${latest}"
+          git push origin "$branch"
+
+          gh pr create \
+            --title "Bump HAProxy ${current} → ${latest}" \
+            --body "$(cat <<'EOF'
+          ## Summary
+
+          Automated version bump from the daily HAProxy upstream check.
+
+          - HAProxy **${{ steps.current.outputs.version }}** → **${{ steps.latest.outputs.version }}**
+          - Source: https://github.com/haproxy/haproxy/releases/tag/v${{ steps.latest.outputs.version }}
+
+          ## Checklist
+
+          - [ ] Review HAProxy changelog for breaking changes
+          - [ ] Update `HAPROXY_SHA256` in `ci/build/build-haproxy-dist.sh` with the new tarball's checksum
+          - [ ] Merge triggers `release.yml` which rebuilds and publishes the wheel
+          EOF
+          )" \
+            --head "$branch" \
+            --base main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

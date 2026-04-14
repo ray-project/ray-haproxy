@@ -1,0 +1,14 @@
+# Pre-built artifacts — populated at CI build time, not committed
+ray_haproxy/bin/haproxy
+ray_haproxy/bin/lib/*.so*
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Tarballs produced by build-haproxy-dist.sh
+*.tar.gz

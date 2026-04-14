@@ -1,0 +1,16 @@
+[project]
+name = "ray-haproxy"
+version = "2.8.12"
+description = "HAProxy binary distribution for Ray Serve"
+readme = "README.rst"
+requires-python = ">=3.9"
+license = {text = "GPLv2"}
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: Proxy Servers",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.backends.legacy:build"

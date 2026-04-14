@@ -1,0 +1,72 @@
+Third-Party Software Notices
+============================
+
+The ray-haproxy wheel bundles pre-built binaries and shared libraries from the
+following open-source projects. Source code for each component can be obtained
+from the URLs listed below.
+
+
+HAProxy
+-------
+License: GNU General Public License v2 (GPLv2)
+Version: see pyproject.toml
+Source:  https://www.haproxy.org/download/
+Git:     https://github.com/haproxy/haproxy
+
+The full GPLv2 text is included in the LICENSE file in this distribution.
+Per GPLv2 Section 3, the corresponding source code for the HAProxy binary
+included in this package is available at the URL above, using the version
+tag matching the version in pyproject.toml (e.g. v3.2.3).
+
+
+OpenSSL
+-------
+License: Apache License 2.0
+Version: see OPENSSL_VERSION in ci/build/build-haproxy-dist.sh
+Source:  https://www.openssl.org/source/
+Git:     https://github.com/openssl/openssl
+
+Licensed under the Apache License, Version 2.0. You may obtain a copy of
+the License at http://www.apache.org/licenses/LICENSE-2.0
+
+
+PCRE (Perl Compatible Regular Expressions)
+-------------------------------------------
+License: BSD License
+Source:  https://sourceforge.net/projects/pcre/
+         https://www.pcre.org/
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice.
+2. Redistributions in binary form must reproduce the above copyright notice.
+3. Neither the name of the University of Cambridge nor the names of its
+   contributors may be used to endorse or promote products derived from this
+   software without specific prior written permission.
+
+
+Lua
+---
+License: MIT License
+Version: see LUA_VERSION in ci/build/build-haproxy-dist.sh
+Source:  https://www.lua.org/ftp/
+Git:     https://github.com/lua/lua
+
+Copyright (C) 1994-2024 Lua.org, PUC-Rio. Permission is hereby granted,
+free of charge, to any person obtaining a copy of this software and associated
+documentation files, to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom
+the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+
+libxcrypt (libcrypt.so.2)
+--------------------------
+License: GNU Lesser General Public License v2.1 (LGPL-2.1-or-later)
+Source:  https://github.com/besser82/libxcrypt
+
+This library is dynamically linked. LGPL-2.1 permits distribution of
+dynamically-linked binaries without imposing GPL obligations on the
+calling program. The source code is available at the URL above.
