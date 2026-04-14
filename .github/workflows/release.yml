@@ -18,13 +18,17 @@ jobs:
       fail-fast: true
       matrix:
         include:
+          # arch: matches tarball name from build-haproxy-dist.sh (x86_64/arm64)
+          # plat_arch: matches manylinux container/wheel tag (x86_64/aarch64)
           # Pin the same PyPA manylinux2014 tag that Ray uses
           # (see ray repo: ci/docker/manylinux.Dockerfile).
           - arch: x86_64
+            plat_arch: x86_64
             runner: ubuntu-22.04
             plat_name: manylinux_2_17_x86_64
             container: quay.io/pypa/manylinux2014_x86_64:2026.01.02-1
-          - arch: aarch64
+          - arch: arm64
+            plat_arch: aarch64
             runner: ubuntu-22.04-arm
             plat_name: manylinux_2_17_aarch64
             container: quay.io/pypa/manylinux2014_aarch64:2026.01.02-1
@@ -98,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false  # run all combos even if one fails
       matrix:
-        arch: [x86_64, aarch64]
+        arch: [x86_64, arm64]
         distro:
           - ubuntu:20.04
           - ubuntu:22.04
@@ -109,7 +113,7 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-22.04
-          - arch: aarch64
+          - arch: arm64
             runner: ubuntu-22.04-arm
         exclude: []
     steps:
@@ -172,12 +176,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        arch: [x86_64, aarch64]
+        arch: [x86_64, arm64]
         python-version: ['3.9', '3.10', '3.11', '3.12']
         include:
           - arch: x86_64
             runner: ubuntu-22.04
-          - arch: aarch64
+          - arch: arm64
             runner: ubuntu-22.04-arm
         exclude: []
 
