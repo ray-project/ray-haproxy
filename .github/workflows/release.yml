@@ -54,6 +54,8 @@ jobs:
             -e OUTPUT_DIR=/work/dist \
             ${{ matrix.container }} \
             /work/ci/build/build-haproxy-dist.sh
+          # Fix ownership — Docker runs as root, subsequent steps run as runner user.
+          sudo chown -R "$(id -u):$(id -g)" dist/
 
       - name: Extract tarball into ray_haproxy/bin/
         run: |
