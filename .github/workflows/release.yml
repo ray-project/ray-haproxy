@@ -159,17 +159,7 @@ jobs:
                 || python3 -m ensurepip --default-pip > /dev/null 2>&1 && python3 -m pip install /wheel/*.whl 2>/dev/null \
                 || { echo 'SKIP: pip not available in this image'; exit 0; }
 
-              python3 -c '
-              from ray_haproxy import get_haproxy_binary
-              import subprocess, os
-              binary = get_haproxy_binary()
-              assert os.path.isfile(binary), f\"not a file: {binary}\"
-              assert os.access(binary, os.X_OK), f\"not executable: {binary}\"
-              r = subprocess.run([binary, \"-v\"], capture_output=True, text=True)
-              assert r.returncode == 0, f\"haproxy -v exit {r.returncode}: {r.stderr}\"
-              assert \"HAProxy version\" in r.stdout, f\"unexpected output: {r.stdout}\"
-              print(f\"OK: {r.stdout.splitlines()[0]}\")
-              '
+              python3 -c 'from ray_haproxy import get_haproxy_binary; import subprocess, os; binary = get_haproxy_binary(); assert os.path.isfile(binary); assert os.access(binary, os.X_OK); r = subprocess.run([binary, \"-v\"], capture_output=True, text=True); assert r.returncode == 0, r.stderr; assert \"HAProxy version\" in r.stdout; print(f\"OK: {r.stdout.splitlines()[0]}\")'
             "
 
   smoke-test:
