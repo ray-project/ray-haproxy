@@ -80,7 +80,7 @@ jobs:
           Automated version bump from the daily HAProxy upstream check.
 
           - HAProxy **${{ steps.current.outputs.version }}** → **${{ steps.latest.outputs.version }}**
-          - Source: https://github.com/haproxy/haproxy/releases/tag/v${{ steps.latest.outputs.version }}
+          - Source: https://www.haproxy.org/download/2.8/src/haproxy-${{ steps.latest.outputs.version }}.tar.gz
 
           ## Checklist
 
@@ -90,6 +90,14 @@ jobs:
           EOF
           )" \
             --head "$branch" \
-            --base main
+            --base main \
+            --reviewer eicherseiji
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Slack
+        if: steps.compare.outputs.needs_bump == 'true' && vars.SLACK_WEBHOOK_URL != ''
+        run: |
+          curl -fsSL -X POST "${{ vars.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-type: application/json' \
+            -d "{\"text\":\"HAProxy upstream update: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}. PR opened in ray-project/ray-haproxy.\"}"
