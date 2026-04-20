@@ -22,20 +22,20 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Current pinned version: $version"
 
-      - name: Get latest 2.8.x tag from haproxy/haproxy
+      - name: Get latest 2.8.x release from haproxy.org
         id: latest
         run: |
-          # Fetch all tags matching v2.8.* and pick the highest semver.
-          latest=$(gh api repos/haproxy/haproxy/tags --paginate \
-            --jq '.[].name' \
-            | grep -E '^v2\.8\.[0-9]+$' \
+          # HAProxy doesn't tag every patch release on GitHub — only major
+          # versions. The authoritative source for patch releases is the
+          # download directory on haproxy.org.
+          latest=$(curl -fsSL "https://www.haproxy.org/download/2.8/src/" \
+            | grep -oP 'haproxy-2\.8\.\d+' \
             | sort -V \
+            | uniq \
             | tail -1 \
-            | sed 's/^v//')
+            | sed 's/^haproxy-//')
           echo "version=$latest" >> "$GITHUB_OUTPUT"
           echo "Latest upstream 2.8.x: $latest"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Compare versions
         id: compare
