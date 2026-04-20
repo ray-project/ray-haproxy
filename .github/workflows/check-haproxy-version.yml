@@ -96,8 +96,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify Slack
-        if: steps.compare.outputs.needs_bump == 'true' && vars.SLACK_WEBHOOK_URL != ''
+        if: steps.compare.outputs.needs_bump == 'true'
         run: |
-          curl -fsSL -X POST "${{ vars.SLACK_WEBHOOK_URL }}" \
+          curl -fsSL -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H 'Content-type: application/json' \
             -d "{\"text\":\"HAProxy upstream update: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}. PR opened in ray-project/ray-haproxy.\"}"
