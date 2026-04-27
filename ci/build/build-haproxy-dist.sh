@@ -39,7 +39,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-/tmp/haproxy-dist}"
 # ---------------------------------------------------------------------------
 OPENSSL_SHA256="23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533"
 LUA_SHA256="9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30"
-HAPROXY_SHA256="f38461bce4d9a12c8ef0999fd21e33821b9146ef5fe73de37fae985a63d5f311"
+HAPROXY_SHA256="ff9d6c0623c430b25d8ccafc755dd12d1138c4fa7628aff6532869a01e8675ef"
 
 verify_checksum() {
     local file="$1" expected="$2" label="$3"
