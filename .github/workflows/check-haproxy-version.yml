@@ -9,6 +9,9 @@ jobs:
   check:
     name: Check for new HAProxy 2.8.x release
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -57,12 +60,20 @@ jobs:
           latest="${{ steps.latest.outputs.version }}"
           branch="bump-haproxy-${latest}"
 
+          # Compute SHA-256 of the new upstream tarball so the bump PR
+          # ships a verified checksum (release.yml fails the build otherwise).
+          tarball_url="https://www.haproxy.org/download/2.8/src/haproxy-${latest}.tar.gz"
+          new_sha=$(curl -fsSL "$tarball_url" | sha256sum | awk '{print $1}')
+          echo "New tarball SHA-256: $new_sha"
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
 
-          # Update HAPROXY_VERSION default in build script.
+          # Update HAPROXY_VERSION default and HAPROXY_SHA256 in build script.
           sed -i "s/HAPROXY_VERSION:-${current}/HAPROXY_VERSION:-${latest}/" \
+            ci/build/build-haproxy-dist.sh
+          sed -i "s|^HAPROXY_SHA256=.*|HAPROXY_SHA256=\"${new_sha}\"|" \
             ci/build/build-haproxy-dist.sh
 
           # Update version in pyproject.toml.
@@ -74,19 +85,19 @@ jobs:
 
           gh pr create \
             --title "Bump HAProxy ${current} → ${latest}" \
-            --body "$(cat <<'EOF'
+            --body "$(cat <<EOF
           ## Summary
 
           Automated version bump from the daily HAProxy upstream check.
 
-          - HAProxy **${{ steps.current.outputs.version }}** → **${{ steps.latest.outputs.version }}**
-          - Source: https://www.haproxy.org/download/2.8/src/haproxy-${{ steps.latest.outputs.version }}.tar.gz
+          - HAProxy **${current}** → **${latest}**
+          - Source: ${tarball_url}
+          - Tarball SHA-256: \`${new_sha}\`
 
           ## Checklist
 
           - [ ] Review HAProxy changelog for breaking changes
-          - [ ] Update `HAPROXY_SHA256` in `ci/build/build-haproxy-dist.sh` with the new tarball's checksum
-          - [ ] Merge triggers `release.yml` which rebuilds and publishes the wheel
+          - [ ] Merging triggers tag-on-bump-merge.yml, which tags \`v${latest}\` and runs release.yml to rebuild and publish the wheel
           EOF
           )" \
             --head "$branch" \
