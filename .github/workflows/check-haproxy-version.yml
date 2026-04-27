@@ -53,8 +53,21 @@ jobs:
             echo "Already up to date: $current"
           fi
 
-      - name: Open bump PR
+      - name: Check if bump branch already exists
+        id: branch
         if: steps.compare.outputs.needs_bump == 'true'
+        run: |
+          latest="${{ steps.latest.outputs.version }}"
+          branch="bump-haproxy-${latest}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists on remote — skipping bump"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open bump PR
+        if: steps.compare.outputs.needs_bump == 'true' && steps.branch.outputs.exists == 'false'
         run: |
           current="${{ steps.current.outputs.version }}"
           latest="${{ steps.latest.outputs.version }}"
@@ -107,7 +120,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify Slack
-        if: steps.compare.outputs.needs_bump == 'true'
+        if: steps.compare.outputs.needs_bump == 'true' && steps.branch.outputs.exists == 'false'
         run: |
           curl -fsSL -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H 'Content-type: application/json' \
