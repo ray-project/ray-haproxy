@@ -1,4 +1,4 @@
-name: Check HAProxy upstream version
+name: HAProxy daily maintenance
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    name: Check for new HAProxy 2.8.x release
+    name: Check upstream version and scan current pinned for CVEs
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -119,9 +119,60 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Notify Slack
+      - name: Notify Slack on version bump
         if: steps.compare.outputs.needs_bump == 'true' && steps.branch.outputs.exists == 'false'
         run: |
           curl -fsSL -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H 'Content-type: application/json' \
             -d "{\"text\":\"HAProxy upstream update: ${{ steps.current.outputs.version }} → ${{ steps.latest.outputs.version }}. PR opened in ray-project/ray-haproxy.\"}"
+
+      # Daily CVE scan of the currently pinned HAProxy. Independent of whether
+      # upstream has a new release. Catches CVEs disclosed against the version
+      # already shipped to Ray Serve users.
+      - name: Build current pinned HAProxy for scanning
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" \
+            -e HAPROXY_VERSION=${{ steps.current.outputs.version }} \
+            -e OUTPUT_DIR=/work/dist \
+            quay.io/pypa/manylinux2014_x86_64:2026.01.02-1 \
+            /work/ci/build/build-haproxy-dist.sh
+          sudo chown -R "$(id -u):$(id -g)" dist/
+          mkdir -p scan-target
+          tar -xzf dist/haproxy-linux-x86_64.tar.gz -C scan-target/
+
+      - name: Scan current pinned for HIGH/CRITICAL CVEs
+        id: scan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+          grype dir:scan-target/ -o json > scan.json
+
+          high_count=$(jq '[.matches[]
+            | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")]
+            | length' scan.json)
+          echo "high_count=$high_count" >> "$GITHUB_OUTPUT"
+
+          if [ "$high_count" -gt 0 ]; then
+            summary=$(jq -r '[.matches[]
+              | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
+              | "• \(.vulnerability.id) (\(.vulnerability.severity)) in \(.artifact.name) \(.artifact.version)"]
+              | unique | join("\n")' scan.json)
+            {
+              echo "summary<<SCAN_EOF"
+              echo "$summary"
+              echo "SCAN_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Slack on CVE in current pinned
+        if: steps.scan.outputs.high_count != '0' && steps.scan.outputs.high_count != ''
+        run: |
+          payload=$(jq -n \
+            --arg ver "${{ steps.current.outputs.version }}" \
+            --arg n   "${{ steps.scan.outputs.high_count }}" \
+            --arg list "${{ steps.scan.outputs.summary }}" \
+            '{text: ":rotating_light: Current pinned HAProxy \($ver) has \($n) HIGH/CRITICAL CVE(s):\n\($list)\nTime to update Ray."}')
+          curl -fsSL -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H 'Content-type: application/json' \
+            -d "$payload"
