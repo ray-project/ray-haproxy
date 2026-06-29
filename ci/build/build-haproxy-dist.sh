@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-HAPROXY_VERSION="${HAPROXY_VERSION:-2.8.21}"
+HAPROXY_VERSION="${HAPROXY_VERSION:-2.8.25}"
 OPENSSL_VERSION="${OPENSSL_VERSION:-3.0.15}"
 LUA_VERSION="${LUA_VERSION:-5.4.7}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/haproxy-dist}"
@@ -39,7 +39,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-/tmp/haproxy-dist}"
 # ---------------------------------------------------------------------------
 OPENSSL_SHA256="23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533"
 LUA_SHA256="9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30"
-HAPROXY_SHA256="ff9d6c0623c430b25d8ccafc755dd12d1138c4fa7628aff6532869a01e8675ef"
+HAPROXY_SHA256="2189aa5baba98e4cf6e9e8c0633d88426eaf3fa1017b2a6061512f11fbc6d856"
 
 verify_checksum() {
     local file="$1" expected="$2" label="$3"
