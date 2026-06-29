@@ -1,0 +1,13 @@
+# Grype config for the vendored HAProxy CVE scan.
+#
+# These two CVEs are fixed in HAProxy 2.8.25 (released 2026-06-26), per the
+# upstream 2.8 CHANGELOG:
+#   - CVE-2026-55204: "BUG/MINOR: hpack-tbl: add missing NULL check after hpack_dht_defrag()"
+#   - CVE-2026-55203: "BUG/MEDIUM: mux-fcgi: fix uint16_t overflow in drl += drp"
+# Grype's DB still lists them as unfixed because the upstream advisories were
+# filed while the fix was "committed upstream, pending tagged release" and have
+# not yet recorded 2.8.25 as the fixed version. Remove these entries once the
+# advisory metadata catches up.
+ignore:
+  - vulnerability: CVE-2026-55203
+  - vulnerability: CVE-2026-55204
