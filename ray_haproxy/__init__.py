@@ -13,11 +13,20 @@ get_haproxy_binary()
     Raises ``FileNotFoundError`` if no usable binary is found.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 
 _BIN_DIR = os.path.join(os.path.dirname(__file__), "bin")
 _BUNDLED = os.path.join(_BIN_DIR, "haproxy")
+
+
+def get_stream_metrics_module(binary: str | None = None) -> str:
+    """Return the observer packaged beside its matching HAProxy binary."""
+    binary = binary or get_haproxy_binary()
+    module = os.path.join(os.path.dirname(os.path.realpath(binary)), "lib", "ray_stream_metrics.so")
+    return module
 
 
 def get_haproxy_binary() -> str:

@@ -61,7 +61,7 @@ setuptools.setup(
     zip_safe=False,
     setup_requires=["wheel"],
     packages=["ray_haproxy"],
-    package_data={"ray_haproxy": ["bin/haproxy", "bin/lib/*.so*"]},
+    package_data={"ray_haproxy": ["bin/haproxy", "bin/lib/*.so*", "bin/lib/*.json"]},
     data_files=[
         ("", ["LICENSE", "THIRD_PARTY_LICENSES"]),
     ],

@@ -86,3 +86,9 @@ License
 HAProxy is distributed under the **GNU General Public License v2**.
 See `LICENSE <https://github.com/haproxy/haproxy/blob/master/LICENSE>`_
 for details.
+
+Streaming metrics
+-----------------
+
+The wheel includes the matching streaming metrics observer used by Ray Serve.
+Native tests run as part of the wheel build on both supported architectures.

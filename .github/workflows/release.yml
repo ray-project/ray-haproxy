@@ -1,13 +1,15 @@
 name: Build and Publish
 
 on:
+  pull_request:
   push:
+    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
-      haproxy_version:
-        description: 'HAProxy version to build (e.g. 3.2.3)'
+      package_version:
+        description: 'Package version (e.g. 2.8.25.post1)'
         required: true
 
 jobs:
@@ -36,21 +38,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine HAProxy version
+      - name: Determine package version
         id: version
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "haproxy_version=${{ github.event.inputs.haproxy_version }}" >> "$GITHUB_OUTPUT"
-          else
+            echo "package_version=${{ github.event.inputs.package_version }}" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             # Strip leading 'v' from tag (v3.2.3 → 3.2.3)
-            echo "haproxy_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "package_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "package_version=$(awk -F\" '/^version = / {print $2}' pyproject.toml)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build HAProxy tarball inside manylinux2014
+      - name: Build HAProxy and observer, run native sanitizer tests inside manylinux2014
         run: |
           docker run --rm \
             -v "$PWD:/work" \
-            -e HAPROXY_VERSION=${{ steps.version.outputs.haproxy_version }} \
             -e OUTPUT_DIR=/work/dist \
             ${{ matrix.container }} \
             /work/ci/build/build-haproxy-dist.sh
@@ -68,7 +71,7 @@ jobs:
 
       - name: Update package version from tag
         run: |
-          VERSION=${{ steps.version.outputs.haproxy_version }}
+          VERSION=${{ steps.version.outputs.package_version }}
           sed -i "s/^version = .*/version = \"${VERSION}\"/" pyproject.toml
 
       - name: Set up Python
@@ -178,6 +181,8 @@ jobs:
         exclude: []
 
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: wheel-${{ matrix.arch }}
@@ -202,7 +207,40 @@ jobs:
           print('OK')
           "
 
+          python - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import tempfile
+          from ray_haproxy import get_haproxy_binary, get_stream_metrics_module
+
+          # Native unit tests exclude HTX callbacks. Loading the installed wheel
+          # checks its Lua ABI, native filter and private exporter registration.
+          binary = get_haproxy_binary()
+          module = get_stream_metrics_module(binary)
+          with tempfile.TemporaryDirectory() as directory:
+              root = pathlib.Path(directory)
+              lua = root / 'observer.lua'
+              lua.write_text(
+                  'assert(package.loadlib(' + json.dumps(module)
+                  + ',"luaopen_ray_stream_metrics"))()\n'
+              )
+              config = root / 'haproxy.cfg'
+              config.write_text(
+                  f'global\n    lua-load-per-thread {lua}\n'
+                  'defaults\n    mode http\n    timeout connect 1s\n'
+                  '    timeout client 1s\n    timeout server 1s\n'
+                  'frontend observer\n    bind 127.0.0.1:8080\n'
+                  '    filter ray_stream_metrics\n'
+                  '    http-request return status 200\n'
+                  f'frontend exporter\n    bind {root / "export.sock"} mode 600 ray-metrics-export\n'
+                  '    http-request return status 200\n'
+              )
+              subprocess.run([binary, '-c', '-f', str(config)], check=True)
+          PY
+
   publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     name: Publish to PyPI
     needs: [build, verify, smoke-test]
     runs-on: ubuntu-22.04

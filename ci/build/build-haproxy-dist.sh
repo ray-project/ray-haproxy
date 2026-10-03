@@ -17,7 +17,7 @@
 #     /work/ci/build/build-haproxy-dist.sh
 #
 # Environment variables:
-#   HAPROXY_VERSION  — version to build (default: 3.2.3)
+#   HAPROXY_VERSION  — version to build (default: 2.8.25)
 #   OPENSSL_VERSION  — OpenSSL version to build from source (default: 3.0.15)
 #                      manylinux2014 ships EOL OpenSSL 1.1.1; we build 3.0.x.
 #                      NOTE: OpenSSL 3.0 LTS EOLs 2026-09-07. Upgrading to 3.2+
@@ -32,6 +32,7 @@ HAPROXY_VERSION="${HAPROXY_VERSION:-2.8.25}"
 OPENSSL_VERSION="${OPENSSL_VERSION:-3.0.15}"
 LUA_VERSION="${LUA_VERSION:-5.4.7}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/haproxy-dist}"
+SOURCE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # ---------------------------------------------------------------------------
 # Pinned source tarball checksums — update these when bumping versions.
@@ -158,24 +159,35 @@ curl -fsSL -o "$BUILD_DIR/haproxy.tar.gz" \
 verify_checksum "$BUILD_DIR/haproxy.tar.gz" "$HAPROXY_SHA256" "HAProxy"
 tar -xzf "$BUILD_DIR/haproxy.tar.gz" -C "$BUILD_DIR" --strip-components=1
 
-echo "==> Compiling HAProxy"
-make -C "$BUILD_DIR" \
-    TARGET=linux-glibc \
-    USE_OPENSSL=1 \
-    SSL_INC="$DEPS_DIR/include" \
-    SSL_LIB="$OPENSSL_LIB_DIR" \
-    USE_ZLIB=1 \
-    USE_PCRE=1 \
-    USE_LUA=1 \
-    LUA_INC="$DEPS_DIR/include" \
-    LUA_LIB="$DEPS_DIR/lib" \
-    USE_PROMEX=1 \
-    -j"$(nproc)"
+# Compile the observer against this exact binary's source/configuration and
+# package it in the same wheel. No downloads or compiler are needed by users.
+CJSON_REVISION="617164a0fe3bb647128178f9caefb304b8573bb6"
+curl -fsSL -o "$BUILD_DIR/cjson.tar.gz" \
+    "https://codeload.github.com/openresty/lua-cjson/tar.gz/$CJSON_REVISION"
+verify_checksum "$BUILD_DIR/cjson.tar.gz" \
+    "e642f16e03c73b0a926ce6f3e664e9e923a9e4987bf4de1c4109fbe6b5bab984" "CJSON"
+tar -xzf "$BUILD_DIR/cjson.tar.gz" -C "$BUILD_DIR"
+CJSON_SRC="$BUILD_DIR/lua-cjson-$CJSON_REVISION"
+# Unity is a build-only C test framework; it is not included in the wheel.
+curl -fsSL -o "$BUILD_DIR/unity.tar.gz" \
+    "https://codeload.github.com/ThrowTheSwitch/Unity/tar.gz/refs/tags/v2.6.1"
+verify_checksum "$BUILD_DIR/unity.tar.gz" \
+    "b41a66d45a6b99758fb3202ace6178177014d52fc524bf1f72687d93e9867292" "Unity"
+tar -xzf "$BUILD_DIR/unity.tar.gz" -C "$BUILD_DIR"
+HAPROXY_MAKE_ARGS=(
+    -C "$BUILD_DIR" -f Makefile -f "$SOURCE_ROOT/ci/build/stream-metrics.mk"
+    TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1
+    SSL_INC="$DEPS_DIR/include" SSL_LIB="$OPENSSL_LIB_DIR"
+    LUA_INC="$DEPS_DIR/include" LUA_LIB="$DEPS_DIR/lib"
+    CJSON_SOURCE_DIR="$CJSON_SRC" STREAM_METRICS_MODULE_DIR="$STAGE_DIR/lib"
+    UNITY_SOURCE_DIR="$BUILD_DIR/Unity-2.6.1/src"
+)
+echo "==> Compiling HAProxy and stream observer; running native sanitizer tests"
+make "${HAPROXY_MAKE_ARGS[@]}" all check-stream-metrics -j"$(nproc)"
 
 # ---------------------------------------------------------------------------
-# 3. Stage binary
+# 3. Stage binary (the observer is already built in lib/)
 # ---------------------------------------------------------------------------
-mkdir -p "$STAGE_DIR/lib"
 cp "$BUILD_DIR/haproxy" "$STAGE_DIR/haproxy"
 chmod 755 "$STAGE_DIR/haproxy"
 
@@ -244,6 +256,8 @@ patchelf --set-rpath '$ORIGIN/lib' "$STAGE_DIR/haproxy"
 
 # Also patch vendored libs to find each other via $ORIGIN.
 find "$STAGE_DIR/lib" -name '*.so*' -exec patchelf --set-rpath '$ORIGIN' {} \;
+
+make "${HAPROXY_MAKE_ARGS[@]}" stream-metrics-manifest
 
 echo "  RPATH: $(patchelf --print-rpath "$STAGE_DIR/haproxy")"
 echo "  Verifying all deps resolve:"

@@ -1,6 +1,7 @@
 # Pre-built artifacts — populated at CI build time, not committed
 ray_haproxy/bin/haproxy
 ray_haproxy/bin/lib/*.so*
+ray_haproxy/bin/lib/*.json
 
 # Python build artifacts
 __pycache__/
