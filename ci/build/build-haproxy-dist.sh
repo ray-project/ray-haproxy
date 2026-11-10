@@ -128,8 +128,12 @@ echo "==> OpenSSL $(${DEPS_DIR}/bin/openssl version)"
 LUA_SRC="$BUILD_DIR/lua-${LUA_VERSION}"
 
 echo "==> Building Lua ${LUA_VERSION}"
-curl -fsSL -o "$BUILD_DIR/lua.tar.gz" \
-    "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz"
+if ! curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+    -o "$BUILD_DIR/lua.tar.gz" "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz"; then
+    curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+        -o "$BUILD_DIR/lua.tar.gz" \
+        "https://ftp.osuosl.org/pub/blfs/conglomeration/lua/lua-${LUA_VERSION}.tar.gz"
+fi
 verify_checksum "$BUILD_DIR/lua.tar.gz" "$LUA_SHA256" "Lua"
 tar -xzf "$BUILD_DIR/lua.tar.gz" -C "$BUILD_DIR"
 

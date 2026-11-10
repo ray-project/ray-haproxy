@@ -129,6 +129,9 @@ jobs:
       # Daily CVE scan of the currently pinned HAProxy. Independent of whether
       # upstream has a new release. Catches CVEs disclosed against the version
       # already shipped to Ray Serve users.
+      - name: Restore pinned sources for scanning
+        run: git checkout --detach "$GITHUB_SHA"
+
       - name: Build current pinned HAProxy for scanning
         run: |
           docker run --rm \
