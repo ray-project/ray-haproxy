@@ -41,6 +41,21 @@ OPENSSL_SHA256="23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533
 LUA_SHA256="9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30"
 HAPROXY_SHA256="2189aa5baba98e4cf6e9e8c0633d88426eaf3fa1017b2a6061512f11fbc6d856"
 
+download_source() {
+    local file="$1"
+    shift
+    local url
+    for url in "$@"; do
+        echo "  Downloading: $url"
+        if curl -fsSL --retry 3 --retry-delay 2 \
+            --connect-timeout 15 --max-time 120 -o "$file" "$url"; then
+            return 0
+        fi
+    done
+    echo "ERROR: failed to download $(basename "$file")"
+    return 1
+}
+
 verify_checksum() {
     local file="$1" expected="$2" label="$3"
     local actual
@@ -104,7 +119,7 @@ OPENSSL_MAJOR="${OPENSSL_VERSION%%.*}"
 OPENSSL_SRC="$BUILD_DIR/openssl-${OPENSSL_VERSION}"
 
 echo "==> Building OpenSSL ${OPENSSL_VERSION}"
-curl -fsSL -o "$BUILD_DIR/openssl.tar.gz" \
+download_source "$BUILD_DIR/openssl.tar.gz" \
     "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz"
 verify_checksum "$BUILD_DIR/openssl.tar.gz" "$OPENSSL_SHA256" "OpenSSL"
 tar -xzf "$BUILD_DIR/openssl.tar.gz" -C "$BUILD_DIR"
@@ -117,7 +132,18 @@ make -j"$(nproc)" > /dev/null
 make install_sw > /dev/null
 popd > /dev/null
 
-echo "==> OpenSSL $(${DEPS_DIR}/bin/openssl version)"
+# Detect OpenSSL lib directory (lib/ on some platforms, lib64/ on others).
+if [ -d "$DEPS_DIR/lib64" ]; then
+    OPENSSL_LIB_DIR="$DEPS_DIR/lib64"
+elif [ -d "$DEPS_DIR/lib" ]; then
+    OPENSSL_LIB_DIR="$DEPS_DIR/lib"
+else
+    echo "ERROR: cannot find OpenSSL lib directory under $DEPS_DIR"; exit 1
+fi
+
+echo "==> OpenSSL"
+LD_LIBRARY_PATH="$OPENSSL_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$DEPS_DIR/bin/openssl" version
 
 # ---------------------------------------------------------------------------
 # 1b. Build Lua 5.4 from source
@@ -128,8 +154,9 @@ echo "==> OpenSSL $(${DEPS_DIR}/bin/openssl version)"
 LUA_SRC="$BUILD_DIR/lua-${LUA_VERSION}"
 
 echo "==> Building Lua ${LUA_VERSION}"
-curl -fsSL -o "$BUILD_DIR/lua.tar.gz" \
-    "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz"
+download_source "$BUILD_DIR/lua.tar.gz" \
+    "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz" \
+    "https://ftp.osuosl.org/pub/blfs/conglomeration/lua/lua-${LUA_VERSION}.tar.gz"
 verify_checksum "$BUILD_DIR/lua.tar.gz" "$LUA_SHA256" "Lua"
 tar -xzf "$BUILD_DIR/lua.tar.gz" -C "$BUILD_DIR"
 
@@ -138,22 +165,13 @@ make -C "$LUA_SRC" install INSTALL_TOP="$DEPS_DIR" > /dev/null
 
 echo "==> Lua $($DEPS_DIR/bin/lua -v 2>&1 || true)"
 
-# Detect OpenSSL lib directory (lib/ on some platforms, lib64/ on others).
-if [ -d "$DEPS_DIR/lib64" ]; then
-    OPENSSL_LIB_DIR="$DEPS_DIR/lib64"
-elif [ -d "$DEPS_DIR/lib" ]; then
-    OPENSSL_LIB_DIR="$DEPS_DIR/lib"
-else
-    echo "ERROR: cannot find OpenSSL lib directory under $DEPS_DIR"; exit 1
-fi
-
 # ---------------------------------------------------------------------------
 # 2. Download and compile HAProxy
 # ---------------------------------------------------------------------------
 HAPROXY_MAJOR_MINOR="${HAPROXY_VERSION%.*}"  # e.g. 3.2 from 3.2.3
 
 echo "==> Downloading HAProxy ${HAPROXY_VERSION}"
-curl -fsSL -o "$BUILD_DIR/haproxy.tar.gz" \
+download_source "$BUILD_DIR/haproxy.tar.gz" \
     "https://www.haproxy.org/download/${HAPROXY_MAJOR_MINOR}/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 verify_checksum "$BUILD_DIR/haproxy.tar.gz" "$HAPROXY_SHA256" "HAProxy"
 tar -xzf "$BUILD_DIR/haproxy.tar.gz" -C "$BUILD_DIR" --strip-components=1
