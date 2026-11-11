@@ -13,8 +13,24 @@ on:
         required: true
 
 jobs:
+  format:
+    name: Check C formatting
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Google style with pinned clang-format
+        run: |
+          python -m pip install clang-format==14.0.6
+          clang-format --dry-run --Werror src/stream_metrics.c tests/stream_metrics_test.c
+
   build:
     name: Build wheel (${{ matrix.arch }})
+    needs: format
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true

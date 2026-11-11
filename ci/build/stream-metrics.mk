@@ -15,10 +15,7 @@ STREAM_METRICS_DEPS := $(STREAM_METRICS_SOURCE) $(STREAM_METRICS_JSON) \
   $(wildcard $(CJSON_SOURCE_DIR)/*.h) $(DEP) \
   $(STREAM_METRICS_ROOT)/ci/build/stream-metrics.mk
 STREAM_METRICS_FLAGS := $(COPTS) -I$(CJSON_SOURCE_DIR) -std=gnu11 -pthread \
-  -Wno-declaration-after-statement -Wno-undef \
-  -Dluaopen_cjson=luaopen_ray_stream_metrics_impl \
-  -Dluaopen_cjson_safe=luaopen_ray_stream_metrics_safe \
-  -DCJSON_MODNAME='"ray_stream_metrics"'
+  -Wno-declaration-after-statement -Wno-undef
 STREAM_METRICS_MODULE := $(STREAM_METRICS_MODULE_DIR)/ray_stream_metrics.so
 STREAM_METRICS_TEST := $(STREAM_METRICS_BUILD_DIR)/stream_metrics_tests
 
