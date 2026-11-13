@@ -3,11 +3,11 @@
 // blocks containing headers, body data, trailers, and end markers.
 //
 // The observer runs inline on the network thread that forwards each response.
-// It scans response body bytes in place for two fixed markers emitted by Ray
-// Serve LLM's native vLLM serializer:
+// It scans response body bytes in place for two fixed markers in vLLM's
+// streamed choices:
 //
-//   "choices":[{"index":I      the choice index of a streamed chunk (native)
-//   "ray_token_count":N        tokens generated since that choice's last chunk
+//   "choices":[{"index":I      the choice index of a streamed chunk
+//   "num_tokens":N             tokens generated since that choice's last chunk
 //
 // No bytes are copied and no JSON is decoded per event. Split markers and
 // numbers are carried across fragments in a few bytes of per-stream state.
@@ -44,9 +44,9 @@ extern char haproxy_version[];
 enum metric { TTFT = 0, ITL = 1, ROUTING = 2, REQUEST = 3 };
 
 // Markers. The index marker is vLLM's native serialization of a stream chunk's
-// first (and only) choice; the count marker is added by Ray Serve LLM.
+// first (and only) choice; the count marker is its `num_tokens` field.
 static const char INDEX_MARKER[] = "\"choices\":[{\"index\":";
-static const char COUNT_MARKER[] = "\"ray_token_count\":";
+static const char COUNT_MARKER[] = "\"num_tokens\":";
 #define INDEX_MARKER_LEN (sizeof(INDEX_MARKER) - 1)
 #define COUNT_MARKER_LEN (sizeof(COUNT_MARKER) - 1)
 #define MAX_MARKER_LEN INDEX_MARKER_LEN

@@ -72,7 +72,7 @@ static void completion_event(char *out, size_t size, unsigned index,
            "\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":%u,"
            "\"text\":\"%s\",\"logprobs\":null,\"finish_reason\":null,"
            "\"stop_reason\":null,\"prompt_token_ids\":null,\"token_ids\":null,"
-           "\"weight_versions\":null,\"ray_token_count\":%u}],"
+           "\"weight_versions\":null,\"num_tokens\":%u}],"
            "\"kv_transfer_params\":null}\n\n",
            index, text, tokens);
 }
@@ -85,7 +85,7 @@ static void test_every_fragment_width(void) {
       "data: {\"id\":\"chat-1\",\"object\":\"chat.completion.chunk\","
       "\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":"
       "{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,"
-      "\"finish_reason\":null,\"ray_token_count\":0}]}\n\n";
+      "\"finish_reason\":null,\"num_tokens\":0}]}\n\n";
   const char *usage =
       "data: {\"id\":\"chat-1\",\"object\":\"chat.completion.chunk\","
       "\"created\":1,\"model\":\"m\",\"choices\":[],\"usage\":{"
@@ -165,7 +165,7 @@ static void test_escaped_markers_in_text(void) {
   char event[512];
   completion_event(
       event, sizeof(event), 0,
-      "\\\"choices\\\":[{\\\"index\\\":7 \\\"ray_token_count\\\":9", 1);
+      "\\\"choices\\\":[{\\\"index\\\":7 \\\"num_tokens\\\":9", 1);
   struct observation *obs = observation();
   feed_split(obs, event, 3, 1100);
   assert_histogram(obs->group, TTFT, 1, 100, 1, 0, 0, 0);
@@ -178,8 +178,8 @@ static void test_escaped_markers_in_text(void) {
  * including overlaps of the marker's leading quote.
  */
 static void test_carry_overlaps(void) {
-  const char *parts[] = {"\"\"choi", "ces\":[{\"index\":0,\"x\":\"\"ray_",
-                         "\"ray_tok", "en_count\":2}]}\n\n"};
+  const char *parts[] = {"\"\"choi", "ces\":[{\"index\":0,\"x\":\"\"num_",
+                         "\"num_tok", "ens\":2}]}\n\n"};
   struct observation *obs = observation();
   for (unsigned i = 0; i < 4; i++) feed(obs, parts[i], strlen(parts[i]), 1100);
   assert_histogram(obs->group, TTFT, 1, 100, 1, 0, 0, 0);
@@ -191,9 +191,9 @@ static void test_carry_overlaps(void) {
 /* Malformed or out-of-range numbers disable collection and count one error. */
 static void test_malformed_numbers(void) {
   const char *cases[] = {
-      "\"choices\":[{\"index\":0,\"ray_token_count\":x}",
-      "\"choices\":[{\"index\":0,\"ray_token_count\":1234567890}",
-      "\"choices\":[{\"index\":4096,\"ray_token_count\":1}",
+      "\"choices\":[{\"index\":0,\"num_tokens\":x}",
+      "\"choices\":[{\"index\":0,\"num_tokens\":1234567890}",
+      "\"choices\":[{\"index\":4096,\"num_tokens\":1}",
   };
   for (unsigned i = 0; i < 3; i++) {
     setUp();
@@ -358,11 +358,11 @@ static void reference_record(struct histogram *h, unsigned metric,
  * boundaries. Every histogram must match the reference exactly.
  */
 static void test_randomized_streams(void) {
-  static const char *noise[] = {"\\\"ray_token_count\\\":7",
+  static const char *noise[] = {"\\\"num_tokens\\\":7",
                                 "\\\"choices\\\":[{\\\"index\\\":3",
-                                "\\\"ray_tok",
+                                "\\\"num_tok",
                                 "\\\"choi",
-                                "ray_token_count",
+                                "num_tokens",
                                 "\\\\",
                                 "123",
                                 "\\\"",
@@ -386,7 +386,7 @@ static void test_randomized_streams(void) {
       }
       if (kind == 1) {
         length += snprintf(wire + length, sizeof(wire) - length,
-                           "data: {\"error\":{\"message\":\"\\\"ray_token_count"
+                           "data: {\"error\":{\"message\":\"\\\"num_tokens"
                            "\\\":1\"}}\n\ndata: [DONE]\n\n");
         continue;
       }
@@ -400,7 +400,7 @@ static void test_randomized_streams(void) {
         length += snprintf(wire + length, sizeof(wire) - length, "%s",
                            noise[rnd(sizeof(noise) / sizeof(*noise))]);
       length += snprintf(wire + length, sizeof(wire) - length,
-                         "\",\"token_ids\":null,\"ray_token_count\":%u", count);
+                         "\",\"token_ids\":null,\"num_tokens\":%u", count);
       terminators[events] = length;  // The byte that ends the count.
       indexes[events] = index;
       counts[events++] = count;
